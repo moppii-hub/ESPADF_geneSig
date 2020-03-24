@@ -36,7 +36,7 @@ audio elementの使い方を説明するため、１つのaudio elementの中で
 | SCK (BCLK) | continuous serial clock (Block CLocK) | GPIO_NUM_5 |
 | SD (DIN) | serial data (Data IN) | GPIO_NUM_26 |
 
-![Wiring](https://github.com/moppii-hub/ESPADF_geneSig/blob/master/ESP32_I2S_example_modified_wiring.png)
+![Wiring](https://github.com/moppii-hub/ESPADF_geneSig/blob/master/ESPADF_geneSig.png)
 
 
 # Usage / 使用方法
