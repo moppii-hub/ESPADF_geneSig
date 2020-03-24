@@ -1,12 +1,17 @@
 # Summary / 概要
+
 This project is an example using ESP-ADF(Audio Development Framework) audio element to output sounds through external I2S-DAC.  
 To explain audio elements usage, it generate a simple sine wave in an audio element instance, output to I2S writer through audio pipeline.  
 If you want to do some processing to raw signal datas using ESP-ADF, this might be for reference.  
+
 ---
+
 このプログラムはESP-ADF(Audio Development Framework)のaudio element機能を使って外部I2S-DACから音声出力をするサンプルプログラムです。  
 audio elementの使い方を説明するため、１つのaudio elementの中で単純な正弦波を生成し、audio pipelineを通してI2S_writerへ信号出力しています。  
 もしESP-ADFを使って音声信号の生データを扱いたい場合には、参考になるかと思い作成しました。  
+
 ---
+
 这个程序是一个样本，就是使用audio element功能通过外接I2S-DAC输出声音的。  
 为了说明audio element功能的用法，在一个audio element功能中产生一个单纯的正弦波, 把这个波形通过audio pipeline输出到I2S-writer。  
 如果使用ESP-ADF想把生的声音数据做一些处理的话，我觉得这个有可能作为参考。  
@@ -36,6 +41,7 @@ audio elementの使い方を説明するため、１つのaudio elementの中で
 
 # Usage / 使用方法
 ## Prepare for dev-env / 環境構築
+
 See [Get Started page](https://docs.espressif.com/projects/esp-adf/en/latest/get-started/index.html) for install ESP-ADF.  
 If you don't have installed ESP-IDF v3.3.1, see [ESP-IDF v3.3.1 Get Started page](https://docs.espressif.com/projects/esp-idf/en/v3.3.1/get-started/index.html) to get it.  
   
@@ -68,7 +74,4 @@ make menuconfig
 
 make flash
 ```
-
-# Reference / 参考
-https://docs.espressif.com/projects/esp-adf/en/latest/index.html
 
