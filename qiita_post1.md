@@ -18,8 +18,29 @@
 
 # 環境構築
 ## ESP-ADFのセットアップ
+　公式サイト（[Get Started](https://docs.espressif.com/projects/esp-adf/en/latest/get-started/index.html)）の指示通りにESP-IDFとESP-ADFを導入します。1点、[先日の投稿](https://qiita.com/moppii/items/e109324d21429f12e2bd)とはESP-IDFのバージョンが異なるため、注意が必要です（前回はv4でしたが、今回はv3.3.1を使います）。私はesp_v3とesp_v4の2つ似フォルダを分けて両立させています（環境変数も切り替えています）が、よく分からなければespフォルダを削除または退避して、一から再セットアップすればOKです。  
+　一応、一からセットアップする際のコマンドは、以下のようになります。（macの場合）  
+
+```bash
+# 事前に https://dl.espressif.com/dl/xtensa-esp32-elf-osx-1.22.0-80-g6c4433a-5.2.0.tar.gz をDownloadsフォルダにダウンロードしておく。
+mkdir -p ~/esp
+cd ~/esp
+tar -xzf ~/Downloads/xtensa-esp32-elf-osx-1.22.0-80-g6c4433a-5.2.0.tar.gz
+git clone -b v3.3.1 --recursive https://github.com/espressif/esp-idf.git
+git clone --recursive https://github.com/espressif/esp-adf.git
+
+# pipでパッケージをインストールする。（pipが無ければ別途インストールして下さい）
+python -m pip install --user -r $IDF_PATH/requirements.txt
+```
+
+
+
 ## Githubからプログラムを入手（git clonoe）
+
+
+
 ## 回路の製作
+
 
 
 # とりあえず動作させる
