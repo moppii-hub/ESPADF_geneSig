@@ -9,6 +9,8 @@ If you want to do some processing to raw signal datas using ESP-ADF, this might 
 このプログラムはESP-ADF(Audio Development Framework)のaudio element機能を使って外部I2S-DACから音声出力をするサンプルプログラムです。  
 audio elementの使い方を説明するため、１つのaudio elementの中で単純な正弦波を生成し、audio pipelineを通してI2S_writerへ信号出力しています。  
 もしESP-ADFを使って音声信号の生データを扱いたい場合には、参考になるかと思い作成しました。  
+Qiitaに解説を投稿しています。  
+[ESP-ADFを使って、計算した音声信号を外部I2S-DACへ出力する方法（１）](https://qiita.com/moppii/items/6fea3ca907f3f9631efc)
 
 ---
 
@@ -69,6 +71,7 @@ git clone https://github.com/moppii-hub/ESPADF_geneSig.git
 
 ## Flash program / プログラムの書き込み
 ```bash
+cd ~/esp/ESPADF_geneSig/
 make menuconfig
 # For flashing, it is need to setup correct USB-serial port in menuconfig.
 
