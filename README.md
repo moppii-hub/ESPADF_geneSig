@@ -11,6 +11,7 @@ audio elementの使い方を説明するため、１つのaudio elementの中で
 もしESP-ADFを使って音声信号の生データを扱いたい場合には、参考になるかと思い作成しました。  
 Qiitaに解説を投稿しています。  
 [ESP-ADFを使って、計算した音声信号を外部I2S-DACへ出力する方法（１）](https://qiita.com/moppii/items/6fea3ca907f3f9631efc)
+[ESP-ADFを使って、計算した音声信号を外部I2S-DACへ出力する方法（２）](https://qiita.com/moppii/items/47bc527ba889caf738f3)
 
 ---
 
