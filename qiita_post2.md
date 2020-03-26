@@ -105,7 +105,7 @@
 - 初期化のあと、一部の設定を補足設定する(audio_element_setinfo)
 　初期化のあとに補足設定をしているのは、恐らくこの順序でなければ設定ができないからで、特に大きな意味はありません（i2s_stream_init関数の中身と同じ順序になっています）。  
 
-　ここで、1つ重要な点があります。それは、`fg_cfg`の要素`open`, `close`, `process`, `destroy`, `read`, `write`の部分です。これらは関数ポインタ型の変数で、それぞれ名前の通りの処理をする関数を指定する変数になっています。write以外はすべて`_geneSig_***`という関数名を代入していますが、これらは135行目以降の関数を指しています。今回は、これらのうち、read(_geneSig_read)という関数で信号を生成して、process(_geneSig_process)という関数で信号を次のaudio element（つまりi2s stream）へ渡します。信号生成については後述します。  
+　ここで、1つ重要な点があります。それは、`fg_cfg`の要素`open`, `close`, `process`, `destroy`, `read`, `write`の部分です。これらは関数ポインタ型の変数で、それぞれ名前の通りの処理をする関数（コールバック関数）を指定する変数になっています。write以外はすべて`_geneSig_***`という関数名を代入していますが、これらは135行目以降の関数を指しています。今回は、これらのうち、read(_geneSig_read)という関数で信号を生成して、process(_geneSig_process)という関数で信号を次のaudio element（つまりi2s stream）へ渡します。この部分は後ほど詳しく説明します。  
 
 
 
@@ -141,26 +141,176 @@
 ## event処理
 　93~114行目は、無限ループになっています。  
 
+```C
+    //inf-loop (can listen event messages from audio-elements)
+    while (1) {
+        audio_event_iface_msg_t msg;
+        esp_err_t ret = audio_event_iface_listen(evt, &msg, portMAX_DELAY);
+        if (ret != ESP_OK) { ... }                  //省略
+
+        if (msg.cmd == AEL_MSG_CMD_ERROR) { ... }   //省略
+
+        if ( ... ) { ... }                          //省略
+    }
+```
+
+　ここでは、各audio elementからのaudio eventと呼ばれるフィードバックを受け取って、それに応じて（if文で判定して）処理をしています。今回の場合、無限に正弦波を出力し続けるため、回路が正常に動作していればこのループを抜けることはありません。audio elementとaudio pipelineの動作説明にはとりあえず関係が無いため、今回はこの部分の説明は割愛します。
 
 
 
 ## 後処理（メモリ解放）
+　118行目以降は、pipelineの停止やメモリの解放をしています。
+
+```C
+    //Terminate pipeline
+    audio_pipeline_terminate(pipeline);
+
+    //Unregister audio-elements
+    audio_pipeline_unregister(pipeline, generator);
+    audio_pipeline_unregister(pipeline, i2s_stream_writer);
+
+    //Remove listener
+    audio_pipeline_remove_listener(pipeline);
+    audio_event_iface_destroy(evt);
+
+    // Release all resources (audio-elements, pipeline)
+    audio_pipeline_deinit(pipeline);
+    audio_element_deinit(generator);
+    audio_element_deinit(i2s_stream_writer);
+```
+
+　先ほど説明した通り、上の無限ループを抜けることは通常無いため、これらの処理が実行されることは通常ありません。よって、これらについても説明を割愛します。
 
 
-## 信号の生成（callback関数内の処理）
-　
 
-# ADFの仕様の説明
-## audio element
+## audio elementのタスクについて（_geneSig_process関数）
 
-## audio pipeline
+　app_main関数の次はコールバック関数を説明します。まず`_geneSig_process()`について説明します。
 
-## event interface
+```C
+static int _geneSig_process(audio_element_handle_t self, char *in_buffer, int in_len){
+    int r_size = 0;
+    int w_size = 0;
 
-## 他
-　ESP-ADFでは、この各audio elementがそれぞれ独立したプロセス（タスク）として動作します。各audio elementは3つのデータバッファ（入力受け取り用のバッファ、途中計算用のバッファ、出力受け渡し用のバッファ）を持っており、audio pipelineへ登録・接続すると、自動的に前後のaudio elementの入力受け取り用バッファと出力受け渡し用バッファをリンク(同じメモリ番地を指すように)します。そして、各audio elementは7つの関数(コールバック関数)を持っており、audio pipelineを実行すると、最後尾のaudio elementからそのコールバック関数が実行され、一つずつ手前のaudio elementに対し出力を要求（後ろのaudio elementから見ると入力処理）をします。
+    r_size = audio_element_input(self, in_buffer, in_len);
+
+    if (r_size == AEL_IO_TIMEOUT) { ... }
+    if ((r_size > 0)) {
+        w_size = audio_element_output(self, in_buffer, r_size);
+    }else{ ... }
+    return w_size;
+}
+```
+　この関数は、`audio_pipeline_run()`が実行されたときに生成されるタスクの中で繰り返し実行されます。主な処理は、`audio_element_input()`と`audio_element_ouotput()`の実行です。そして実は、`audio_element_input()`は`read`のコールバック関数を、`audio_element_ouotput()`はwriteのコールバック関数を実行するのです。分かりにくいと思うので、図を用意しました。
+
+＊＊図＊＊
+
+　audio elementには3つのバッファがあるのですが、`audio_element_input()`（またはその中で呼ばれる`read()`というコールバック関数）はinバッファからselfバッファへ、`audio_element_output()`（またはその中で呼ばれる`write()`というコールバック関数）はselfバッファからoutバッファへ、それぞれデータを移す処理をしています。そして、これの2つの関数は、`process()`というコールバック関数の中で実行されており、この`process()`は繰り返し実行されるようになっています。
+
+　なお、実は今回作成した`generator`というelementは、上図のin-bufferを持っていません。というのは、audio pipelineの先頭のaudio elementはin-bufferを持たず、また末尾のaudio elementはout-bufferを持ちません。そのため、先頭に位置する`generator`は`read()`を実行する際、in-bufferから値を読み取るのではなく、自ら信号を生成してself-bufferへ渡すことになります。それが、次に説明する_geneSig_read関数の動作です。
+
+
+
+## 信号の生成（_geneSig_read関数）
+　さて最後に、信号の生成をしているコールバック関数`_geneSig_read()`の説明をします。
+
+```C
+static int _geneSig_read(audio_element_handle_t self, char *buffer, int len, TickType_t ticks_to_wait, void *context){
+    //generate signals and put into (char *)buffer.
+    float f_signal = 0.0, f_time;
+    int i_fs, i_sample_per_wave;
+    uint16_t i_signal = 0;
+    uint16_t *sample;
+    size_t bytes_read = 0;
+
+    //get sample-rates from audio-element-info.
+    audio_element_info_t info;
+    audio_element_getinfo(self, &info);
+    i_fs = info.sample_rates;
+    i_sample_per_wave = i_fs / WAVE_FREQ_HZ;
+
+    //alloc signal sample buffer.
+    sample = calloc(len/2, sizeof(uint16_t));
+
+    for(int i=0;i<len/2;i+=2){
+
+        //Increment global time-step. (Unit:step, 1step = 1/44100 seconds)
+        i_time_global++;
+
+        //calc real-time. (Unit:seconds)
+        f_time = (float)(i_time_global) / (float)(i_sample_per_wave);
+
+        //calc signal amplitude
+        f_signal = 1 + sin(2 * PI * f_time);        //float:[0, 2]
+        i_signal = (uint16_t)(MAXVOL * f_signal);      //uint16_t:[0, 65535]
+
+        //copy to sample-buffer(on memory).
+        //Left channel(2bytes) and Right channel(2bytes)
+        sample[i] = i_signal;
+        sample[i+1] = i_signal;
+
+        //For return value
+        bytes_read += 4;
+
+        //For prevent from overflow global-time steps, decrease time.
+        if(i_time_global > i_sample_per_wave) i_time_global -= i_sample_per_wave;
+    }
+
+    //memory copy to buffer from sample
+    memcpy(buffer, sample, len);
+
+    //release sample buffer
+    free(sample);
+
+    return bytes_read;
+}
+```
+
+　この関数は、引数の`(char *)buffer`に、`len`で指定された長さの音声データを渡す関数です。この`(char *)buffer`が、上の説明のself-bufferです。この関数では、以下の処理をしています。
+- `(char *)buffer`に入れる音声データを保管するためのメモリ領域を確保（calloc）
+- １ステップずつ、音声波形を計算し、確保したメモリへ代入（forループ）
+- `(char *)buffer`に音声波形をコピーし、確保したメモリを解放（memcpy, free）
+
+
+### 音声データを保管するためのメモリ領域を確保
+
+　今回、音声データは、サンプリング周波数44.1kHzの16bitとしています。つまり音声信号はunsigned int 16bitで表現し、1サンプルにつき2byte(16bit)必要になります。`*buffer`へ入れるデータ量は引数の`len`で指定されていますが、`*buffer`はchar型なので、`len * 1byte`を`*buffer`へ入れる必要があります。なので、2byte（`sizeof(uint16_t)`）を`len/2`個確保するようにしています。  もちろん、`sizeof(char)`を`len`個の量としても構いません。
+
+```C
+    //alloc signal sample buffer.
+    sample = calloc(len/2, sizeof(uint16_t));
+```
+
+### １ステップずつ、音声波形を計算し、確保したメモリへ代入
+
+　`i_time_global`はグローバル変数です。forループの中身が1回実行されると1増えます。これは時間（ステップ数）を表しており、この変数が1ステップ増える＝1/44100秒進む、という意味です。`f_time`は秒単位の実時間で、`i_time_global`をサンプリング周波数`i_fs`で割って、正弦波の周波数`WAVE_FREQ_HZ`を掛けた値になっています。  
+　`f_signal`と`i_signal`は正弦波です。uint16_t型の範囲内になるよう調整をしています。正弦波の計算ロジックについては割愛します。あとは、`sample`に`i_signal`を代入するだけです。なお今回は2ch分のデータが必要になるため、`sample[i]`と`sample[i+1]`の両方に同じ値を代入しています。  
+
+### `(char *)buffer`に音声波形をコピーし、確保したメモリを解放
+
+　forで計算が終わったら、`*buffer`の示すメモリ番地へ`sample`の値をコピーします。そして`sample`のメモリを解放します。  
+
+
+
+## ADFのバッファについて、補足説明
+　プログラムの説明は以上ですが、ADFのaudio element及びaudio pipelineにおけるバッファについて、補足説明をします。  
+　上の方でaudio elementには3つのバッファがあると書きましたが、実際には下図のような構造になっています。  
+
+＊＊＊図＊＊＊
+
+　in-bufferとout-bufferは、audio pipelineにelementを登録し、element同士を接続した時点で生成されます。そして、手前のelementのout-bufferと次のelementのin-bufferは、実は同じもの（同じメモリアドレス）を指しています。このin-bufferとout-bufferはリングバッファ（メモリ操作不要のFILO）です（ringbuf.cに実装されています）。  
+
+　上の方で、audio elementの初期化の所で、各コールバック関数を指定しましたが、writeにはNULLを指定しました。
+
+```C
+    fg_cfg.write = NULL;                //if NULL, execute "el->write_type = IO_TYPE_RB;"
+```
+
+　これは、つまりself-bufferの値をそのままout-bufferへ書き込む（他の特別なことはしないので、自分で作成した関数を指定する必要がない）、という意味です。もしもwriteもreadもNULLにした場合、in-bufferの値をself-bufferを経由してout-bufferへ流す（パススルー）動作になります。 逆に、readまたはwriteの関数を自作すれば、その中で信号の加工（フィルタ・アンプ）や観測（FFTなど）といった処理を自由に実装できるようになります。
 
 
 
 # さいごに
+　長くなりましたが、いかがでしょうか。ESP-ADFについては日本語の情報が全く無さそうだったため、ESP32を使って音声信号処理をしたいと考えている方々への一助になればと思い、投稿しました。私はCore AudioやVSTプラグイン開発ライブラリを使ってリアルタイム音声処理の経験がほんの少しあるため、コールバック関数や信号の受け渡しの概念には多少慣れています。そのため、説明不十分なところがあるかもしれません。疑問点はコメント等頂ければ随時補足します。
+　引き続き、このESP-ADFライブラリを活用し、細々と知見を投稿したいと思います。
 
