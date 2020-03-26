@@ -1,17 +1,19 @@
-# はじめに（前回のおさらい）
-　[前回](https://qiita.com/moppii/items/6fea3ca907f3f9631efc)の続きです。今回はプログラムの中身を説明します。
+# はじめに
+　前回の[ESP-ADFを使って、計算した音声信号を外部I2S-DACへ出力する方法（１）](https://qiita.com/moppii/items/6fea3ca907f3f9631efc)からの続きです。今回はプログラムの中身を説明します。
 プログラム本体は[ESPADF_geneSig/main/geneSig_main.c](https://github.com/moppii-hub/ESPADF_geneSig/blob/master/main/geneSig_main.c)です。
 
 
 # プログラムの説明
+
 ## 全体の流れ
+
 1. audio pipelineを作成する
 2. 2つのaudio elementを作成する(信号計算する要素と、I2S出力をする要素の2つ)
 3. 2つのaudio elementをaudio pipelineに登録し、接続する。
 4. event listenerを準備する
 5. audio pipelineを起動する
 6. 無限ループ(audio elementから停止・エラー等のメッセージを受け取ったら、無限ループを抜ける)
-7. ループを抜けたら、pipelineを停止し、各変数を解放する。
+7. ループを抜けたら、pipelineを停止し、各変数のメモリを解放する。
 
 
 ## audio pipelineとaudio elementについて
@@ -21,15 +23,15 @@
 
 ![audio pipelineの例](https://docs.espressif.com/projects/esp-adf/en/latest/_images/blockdiag-5c07de543c2e374ca051b1a185278c255ba43554.png)  
 
-　この例では、MP3ファイルを開く機能(Read MP3 file)、MP3ファイルから音声データを取り出す機能(MP3 decoder)、音声データをI2S出力する機能(I2S stream)の3つのaudio elementを接続して、1つのaudio pipelineを構成しています（※一番右のCodec chipというのはプログラム上では存在しないものなので、今は無視してください）。  
+　この図の例では、MP3ファイルを開く機能(Read MP3 file)、MP3ファイルから音声データを取り出す機能(MP3 decoder)、音声データをI2S出力する機能(I2S stream)の3つのaudio elementを接続して、1つのaudio pipelineを構成しています（一番右のCodec chipというのはプログラム上では存在しないものなので、今は無視してください）。  
 
-　今回のプログラムでは、2つのaudio elementを作成しています。1つは信号波形を生成するelementです。もう1つは、上の図と同じようにI2S出力をするelement(I2S stream)です。これを、左から順に接続し、1つめのelementが生成した信号をI2S出力するelementに受け渡す動作になっています。  
+　今回のプログラムでは、audio elementを2つ使用します。1つは信号波形を生成するelementです。もう1つは、上の図と同じようにI2S出力をするelement(I2S stream)です。これを、左から順に接続し、1つめのelementが生成した信号をI2S出力するelementに受け渡し、音声を再生します。  
 
 　さて、ここからはプログラムを見ながら説明します。
 
 
 ## pipelineの作成
-　まず、37~40行目のaudio pipelineの作成です。  
+　まずは`app_main()`の冒頭から、37~40行目のaudio pipelineの作成です。  
 
 ```C
     //Create pipeline
@@ -38,11 +40,13 @@
     mem_assert(pipeline);
 ```
 
-　`audio_pipeline_cfg_t`というのは、`audio_pipeline_cfg`という構造体のポインタ型(typedefされたもの)です。ESP-ADFではこういった専用の型が大量に出てきますが、中身を理解する必要はありませんので、読み飛ばしてしまいましょう。
+　`audio_pipeline_cfg_t`というのは、`audio_pipeline_cfg`という構造体のポインタ型(typedefされたもの)です。ESP-ADFではこういった専用の型がたくさん出てきますが、中身を完全に把握する必要はありませんので、読み飛ばしてしまいましょう。
 　この3行の意味は要するに、
+
 - 標準設定(config)を準備して、
 - audio pipelineを初期化(init)して、
-- 初期化の結果を確認(mem_assert)している、
+- 初期化の結果を確認(mem_assert)する
+
 というだけです。これ以上の理解は今回は不要です。
 
 
@@ -58,14 +62,16 @@
 ```
 
 　これも、先ほどのaudio pipelineの作成と似ています。この3行の意味は、
-- 標準設定(config)を準備する
-- 設定の一項目(i2s_cfg_write.type)を微調整する
+
+- 標準設定(config)を準備して、
+- 設定の一項目(i2s_cfg_write.type)を微調整して、
 - audio elementを初期化(init)する
+
 というだけです。今回はなぜか初期化の結果の確認はしていませんが、気にする必要はありません。  
 
-　ところで、このaudio elementは、いろんな種類のものがあります。上のi2s_streamというのはその1つで、これはi2sの入出力をする専用のaudio elementです（入力、つまり録音もできるのですが、今回は出力するため、`i2s_cfg_write.type = AUDIO_STREAM_WRITER;`としています）。この他にも、各種オーディオファイルの読み取り機能(mp3_decoder, wav_decoder等)やファイルの読み取り機能(fatfs_stream_reader, http_stream_reader等)のような専用elementがあります。  
+　ところで、このaudio elementは、いろんな種類のものがあります。上のi2s_streamというのはその1つで、これはi2sの入出力をする**専用の**audio elementです（入力、つまり録音もできるelementです。今回は出力するため、`i2s_cfg_write.type = AUDIO_STREAM_WRITER;`としています）。この他にも、各種オーディオファイルの読み取り機能(mp3_decoder, wav_decoder等)やファイルの読み取り機能(fatfs_stream_reader, http_stream_reader等)のような専用elementがあります。  
 
-　しかし、自分で信号を生成して次のelementに受け渡すような専用elementは残念ながらありません。そこで、汎用の(基本的な|素っ裸の)audio elementを使って、自分で実装する必要があります。それが48~76行目です。  
+　しかし、自分で信号を生成して次のelementに受け渡すような専用elementは残念ながらありません。そこで、**汎用の**audio elementを使って、自分で実装する必要があります。それが48~76行目です。  
 
 ```C
     //---- Create audio-element for generate signal(sine wave) ----
@@ -77,7 +83,7 @@
     fg_cfg.process = _geneSig_process;
     fg_cfg.destroy = _geneSig_destroy;
     fg_cfg.read = _geneSig_read;
-    fg_cfg.write = NULL;                //if NULL, execute "el->write_type = IO_TYPE_RB;"
+    fg_cfg.write = NULL;    //if NULL, execute "el->write_type = IO_TYPE_RB;"
     fg_cfg.task_stack = (3072+512);
     fg_cfg.task_prio = 5;
     fg_cfg.task_core = 0;
@@ -100,12 +106,14 @@
 ```
 
 　これも、簡単に言えば、以下の処理をしているだけです。
-- fg_cfgという設定を準備する
-- audio_element_initでelementを初期化する
-- 初期化のあと、一部の設定を補足設定する(audio_element_setinfo)
+
+- fg_cfgという設定を準備して、
+- audio_element_initでelementを初期化して、
+- 少し設定を補足する(audio_element_setinfo)
+
 　初期化のあとに補足設定をしているのは、恐らくこの順序でなければ設定ができないからで、特に大きな意味はありません（i2s_stream_init関数の中身と同じ順序になっています）。  
 
-　ここで、1つ重要な点があります。それは、`fg_cfg`の要素`open`, `close`, `process`, `destroy`, `read`, `write`の部分です。これらは関数ポインタ型の変数で、それぞれ名前の通りの処理をする関数（コールバック関数）を指定する変数になっています。write以外はすべて`_geneSig_***`という関数名を代入していますが、これらは135行目以降の関数を指しています。今回は、これらのうち、read(_geneSig_read)という関数で信号を生成して、process(_geneSig_process)という関数で信号を次のaudio element（つまりi2s stream）へ渡します。この部分は後ほど詳しく説明します。  
+　ここで、1つ重要な点があります。それは、`fg_cfg`の要素`open`, `close`, `process`, `destroy`, `read`, `write`の部分です。これらは関数ポインタ型の変数で、それぞれ名前の通りの処理をする関数（コールバック関数）を指定する変数になっています。write以外はすべて`_geneSig_***`という関数名を代入していますが、これらは135行目以降の関数を指しています。今回は、これらのうち、`read()`（`_geneSig_read()`）という関数で信号を生成して、`process()`（`_geneSig_process()`）という関数で信号を次のaudio element（つまりi2s stream）へ渡します。この部分は後ほど詳しく説明します。  
 
 
 
@@ -130,11 +138,13 @@
 ```
 
 　これは、つまり以下の処理をしています。
+
 - pipelineにelementを登録し、
 - audio pipelineの中でelement同士を接続し、
 - event listenerというのを設定して、
-- audio pipelineを起動している。
-　これらは、audio pipelineを使う時の定型文です。最後のaudio_pipeline_run()関数を実行すると、各audio elementが1つのタスクを生成します。ここでいうタスクとは、FreeRTOSのタスクで、つまりxTaskCreatePinnedToCore関数が実行されます。FreeRTOSの説明については割愛しますが、ESP-IDFはFreeRTOSベースで設計されており、マルチタスクやメモリ管理など、一般的なFreeRTOSと同等の機能を有しているようです。とにかく、各audio elementが動作開始(readやwrite等の関数実行)し、element間で信号を受け渡しし始めます。
+- audio pipelineを起動する
+
+　これらは、audio pipelineを使う時の定型文です。最後の`audio_pipeline_run()`を実行すると、各audio elementが1つのタスクを生成します。ここでいうタスクとは、FreeRTOSのタスクのことで、具体的には`xTaskCreatePinnedToCore()`の実行により生成します。FreeRTOSの説明については割愛しますが、ESP-IDFはFreeRTOSベースで設計されており、マルチタスクやメモリ管理など、一般的なFreeRTOSと同等の機能を有しているようです。ともあれ、タスクが生成されて、各audio elementが動作開始(`read()`や`write()`等の関数を実行)すると、element間で信号を受け渡しが始まります。
 
 
 
@@ -154,7 +164,7 @@
     }
 ```
 
-　ここでは、各audio elementからのaudio eventと呼ばれるフィードバックを受け取って、それに応じて（if文で判定して）処理をしています。今回の場合、無限に正弦波を出力し続けるため、回路が正常に動作していればこのループを抜けることはありません。audio elementとaudio pipelineの動作説明にはとりあえず関係が無いため、今回はこの部分の説明は割愛します。
+　ここでは、各audio elementからのaudio eventと呼ばれるフィードバックを受け取って、それに応じて（if文で判定して）処理をしています。今回の場合、ずっと正弦波を出力し続けるため、回路が正常に動作していればこのループを抜けることはありません。audio elementとaudio pipelineの動作説明にはとりあえず関係が無いため、今回はこの部分の説明は割愛します。
 
 
 
@@ -185,7 +195,7 @@
 
 ## audio elementのタスクについて（_geneSig_process関数）
 
-　app_main関数の次はコールバック関数を説明します。まず`_geneSig_process()`について説明します。
+　`app_main()`の次はコールバック関数を説明します。まず`_geneSig_process()`について説明します。
 
 ```C
 static int _geneSig_process(audio_element_handle_t self, char *in_buffer, int in_len){
@@ -201,13 +211,13 @@ static int _geneSig_process(audio_element_handle_t self, char *in_buffer, int in
     return w_size;
 }
 ```
-　この関数は、`audio_pipeline_run()`が実行されたときに生成されるタスクの中で繰り返し実行されます。主な処理は、`audio_element_input()`と`audio_element_ouotput()`の実行です。そして実は、`audio_element_input()`は`read`のコールバック関数を、`audio_element_ouotput()`はwriteのコールバック関数を実行するのです。分かりにくいと思うので、図を用意しました。
+　この関数は、`audio_pipeline_run()`が実行されたときに生成されるタスクの中で繰り返し実行されます。主な処理は、`audio_element_input()`と`audio_element_ouotput()`の実行です。そして実は、`audio_element_input()`は`read()`を、`audio_element_ouotput()`は`write()`を実行するのです。分かりにくいと思うので、図を用意しました。  
 
-＊＊図＊＊
+![element.png](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/603551/31423d30-bb4e-6d98-f21e-dab66e924515.png)
 
-　audio elementには3つのバッファがあるのですが、`audio_element_input()`（またはその中で呼ばれる`read()`というコールバック関数）はinバッファからselfバッファへ、`audio_element_output()`（またはその中で呼ばれる`write()`というコールバック関数）はselfバッファからoutバッファへ、それぞれデータを移す処理をしています。そして、これの2つの関数は、`process()`というコールバック関数の中で実行されており、この`process()`は繰り返し実行されるようになっています。
+　audio elementには3つのバッファがあるのですが、`audio_element_input()`（またはその中で呼ばれる`read()`というコールバック関数）はinバッファからselfバッファへ、`audio_element_output()`（またはその中で呼ばれる`write()`というコールバック関数）はselfバッファからoutバッファへ、それぞれデータを渡す処理をしています。そして、これの2つの関数は、`process()`というコールバック関数の中で実行されており、この`process()`は繰り返し実行されるようになっています。
 
-　なお、実は今回作成した`generator`というelementは、上図のin-bufferを持っていません。というのは、audio pipelineの先頭のaudio elementはin-bufferを持たず、また末尾のaudio elementはout-bufferを持ちません。そのため、先頭に位置する`generator`は`read()`を実行する際、in-bufferから値を読み取るのではなく、自ら信号を生成してself-bufferへ渡すことになります。それが、次に説明する_geneSig_read関数の動作です。
+　なお、実は今回作成した`generator`というelementは、上図のin-bufferを持っていません。というのは、audio pipelineの先頭のaudio elementはin-bufferを持たず、また末尾のaudio elementはout-bufferを持たないためです。そのため、先頭に位置する`generator`は`read()`を実行する際、in-bufferから値を読み取るのではなく、自ら信号を生成してself-bufferへ渡すことになります。それが、次に説明する`_geneSig_read()`の動作です。  
 
 
 
@@ -267,24 +277,28 @@ static int _geneSig_read(audio_element_handle_t self, char *buffer, int len, Tic
 ```
 
 　この関数は、引数の`(char *)buffer`に、`len`で指定された長さの音声データを渡す関数です。この`(char *)buffer`が、上の説明のself-bufferです。この関数では、以下の処理をしています。
+
 - `(char *)buffer`に入れる音声データを保管するためのメモリ領域を確保（calloc）
 - １ステップずつ、音声波形を計算し、確保したメモリへ代入（forループ）
 - `(char *)buffer`に音声波形をコピーし、確保したメモリを解放（memcpy, free）
 
+　以下、それぞれ詳しく説明します。  
+
 
 ### 音声データを保管するためのメモリ領域を確保
 
-　今回、音声データは、サンプリング周波数44.1kHzの16bitとしています。つまり音声信号はunsigned int 16bitで表現し、1サンプルにつき2byte(16bit)必要になります。`*buffer`へ入れるデータ量は引数の`len`で指定されていますが、`*buffer`はchar型なので、`len * 1byte`を`*buffer`へ入れる必要があります。なので、2byte（`sizeof(uint16_t)`）を`len/2`個確保するようにしています。  もちろん、`sizeof(char)`を`len`個の量としても構いません。
+　今回、音声データは、サンプリング周波数44.1kHzの16bitとしています。つまり音声信号はunsigned int 16bitで表現され、1サンプルにつき2byte(16bit)必要になります。`*buffer`へ入れるデータ量は引数の`len`で指定されていますが、`*buffer`はchar型なので、`(len)`byteを`*buffer`へ入れる必要があります。たとえば`len`が10なら10byteです。下のプログラムの`sizeof(uint16_t)`は2byteなので、サイズは`len/2`としています。つまり`len`が10なら、2byteを`len/2`つまり5個分、となります。  
 
 ```C
     //alloc signal sample buffer.
     sample = calloc(len/2, sizeof(uint16_t));
 ```
 
+
 ### １ステップずつ、音声波形を計算し、確保したメモリへ代入
 
 　`i_time_global`はグローバル変数です。forループの中身が1回実行されると1増えます。これは時間（ステップ数）を表しており、この変数が1ステップ増える＝1/44100秒進む、という意味です。`f_time`は秒単位の実時間で、`i_time_global`をサンプリング周波数`i_fs`で割って、正弦波の周波数`WAVE_FREQ_HZ`を掛けた値になっています。  
-　`f_signal`と`i_signal`は正弦波です。uint16_t型の範囲内になるよう調整をしています。正弦波の計算ロジックについては割愛します。あとは、`sample`に`i_signal`を代入するだけです。なお今回は2ch分のデータが必要になるため、`sample[i]`と`sample[i+1]`の両方に同じ値を代入しています。  
+　`f_signal`と`i_signal`は正弦波です。uint16_t型の範囲内になるよう調整をしています。正弦波の計算ロジックについては割愛します。あとは、`sample`に`i_signal`を代入するだけです。今回は2ch分のデータが必要になるため、`sample[i]`と`sample[i+1]`の両方に同じ値を代入しています。  
 
 ### `(char *)buffer`に音声波形をコピーし、確保したメモリを解放
 
@@ -292,11 +306,11 @@ static int _geneSig_read(audio_element_handle_t self, char *buffer, int len, Tic
 
 
 
-## ADFのバッファについて、補足説明
-　プログラムの説明は以上ですが、ADFのaudio element及びaudio pipelineにおけるバッファについて、補足説明をします。  
+## バッファについて補足
+　プログラムの説明は以上ですが、ADFのaudio element及びaudio pipelineにおけるバッファについて、補足説明をします。
 　上の方でaudio elementには3つのバッファがあると書きましたが、実際には下図のような構造になっています。  
 
-＊＊＊図＊＊＊
+![pipeline.png](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/603551/cc818713-4219-180a-7a4a-4ed99f9688db.png)
 
 　in-bufferとout-bufferは、audio pipelineにelementを登録し、element同士を接続した時点で生成されます。そして、手前のelementのout-bufferと次のelementのin-bufferは、実は同じもの（同じメモリアドレス）を指しています。このin-bufferとout-bufferはリングバッファ（メモリ操作不要のFILO）です（ringbuf.cに実装されています）。  
 
@@ -306,11 +320,12 @@ static int _geneSig_read(audio_element_handle_t self, char *buffer, int len, Tic
     fg_cfg.write = NULL;                //if NULL, execute "el->write_type = IO_TYPE_RB;"
 ```
 
-　これは、つまりself-bufferの値をそのままout-bufferへ書き込む（他の特別なことはしないので、自分で作成した関数を指定する必要がない）、という意味です。もしもwriteもreadもNULLにした場合、in-bufferの値をself-bufferを経由してout-bufferへ流す（パススルー）動作になります。 逆に、readまたはwriteの関数を自作すれば、その中で信号の加工（フィルタ・アンプ）や観測（FFTなど）といった処理を自由に実装できるようになります。
+　これは、つまりself-bufferの値をそのままout-buffer（リングバッファ）へ書き込む、という意味です。他の特別なことは何もしないので、自分で作成した関数を指定する必要がないため、関数ポインタ変数の`write`には`NULL`を代入します。もしも`write`も`read`も`NULL`にした場合、in-bufferの値をself-bufferを経由してout-bufferへ流す（パススルー）動作になります。 逆に、`read`または`write`に自作した関数を指定すれば、その自作関数の中で信号の加工（フィルタ・アンプ）や観測（FFTなど）といった処理を実装できます。
 
 
 
 # さいごに
-　長くなりましたが、いかがでしょうか。ESP-ADFについては日本語の情報が全く無さそうだったため、ESP32を使って音声信号処理をしたいと考えている方々への一助になればと思い、投稿しました。私はCore AudioやVSTプラグイン開発ライブラリを使ってリアルタイム音声処理の経験がほんの少しあるため、コールバック関数や信号の受け渡しの概念には多少慣れています。そのため、説明不十分なところがあるかもしれません。疑問点はコメント等頂ければ随時補足します。
-　引き続き、このESP-ADFライブラリを活用し、細々と知見を投稿したいと思います。
+　長くなりましたが、いかがでしょうか。ESP-ADFについては日本語の情報が全く無さそうだったため、ESP32を使って音声信号処理をしたいと考えている方々への一助になればと思い、投稿しました。私は、もう随分昔の話ですが、AppleのCoreAudioやVSTプラグイン開発ライブラリを使ってリアルタイム音声処理プログラムを少し書いていたことがあるため、コールバック関数や信号の受け渡しの概念・お作法には多少慣れています。そのため、不慣れな方にとっては分かりにくい説明になっているかもしれません。疑問がありましたら、コメント等頂ければ補足したいと思います。
+
+　しばらくは、引き続きこのESP-ADFライブラリを活用して、知見を投稿したいと思います。
 
