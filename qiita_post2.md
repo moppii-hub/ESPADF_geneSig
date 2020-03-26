@@ -16,19 +16,20 @@
 
 ## audio pipelineとaudio elementについて
 　プログラムの説明をする前に、まずESP-ADFにおける重要な概念であるaudio pipelineとaudio elementについて簡単に紹介しておきます。  
-　audio pipelineとは、パイプラインという名前の通り、一つの管、線のようなものです。audio elementは、このパイプラインにはめ込む各要素のことで、audio pipelineは複数のaudio elementを接続する形で構成されます。[公式説明](https://docs.espressif.com/projects/esp-adf/en/latest/api-reference/index.html)の図を貼っておきます。  
+
+　audio pipelineとは、パイプラインという名前の通り、一つの管、線のようなものです。audio elementはこのパイプラインにの中にある要素で、audio pipelineは複数のaudio elementを接続する形で構成されます。[公式説明](https://docs.espressif.com/projects/esp-adf/en/latest/api-reference/index.html)の図を貼っておきます。  
 
 ![audio pipelineの例](https://docs.espressif.com/projects/esp-adf/en/latest/_images/blockdiag-5c07de543c2e374ca051b1a185278c255ba43554.png)  
 
 　この例では、MP3ファイルを開く機能(Read MP3 file)、MP3ファイルから音声データを取り出す機能(MP3 decoder)、音声データをI2S出力する機能(I2S stream)の3つのaudio elementを接続して、1つのaudio pipelineを構成しています（※一番右のCodec chipというのはプログラム上では存在しないものなので、今は無視してください）。  
 
-　今回のプログラムでは、2つのaudio elementを作成しています。1つは信号波形を生成するelementです。もう1つは、上の図と同じようにI2S出力をするelement(I2S stream)です。これを、左から順に接続し、1つめのelementが生成した信号をI2S出力するelementに受け渡す動作を実現しています。
+　今回のプログラムでは、2つのaudio elementを作成しています。1つは信号波形を生成するelementです。もう1つは、上の図と同じようにI2S出力をするelement(I2S stream)です。これを、左から順に接続し、1つめのelementが生成した信号をI2S出力するelementに受け渡す動作になっています。  
 
-　これだけでは中々理解しづらいと思いますので、ここからはプログラムを見ながら説明します。
+　さて、ここからはプログラムを見ながら説明します。
 
 
 ## pipelineの作成
-　まず、37行目~のaudio pipelineの作成です。  
+　まず、37~40行目のaudio pipelineの作成です。  
 
 ```C
     //Create pipeline
@@ -57,14 +58,14 @@
 ```
 
 　これも、先ほどのaudio pipelineの作成と似ています。この3行の意味は、
-- 標準設定(config)を準備して、
-- 設定の一項目(i2s_cfg_write.type)を微調整して、
-- audio elementを初期化(init)している、
-というだけです。今回はなぜか初期化の結果の確認はしていませんが、気にする必要はありません。
+- 標準設定(config)を準備する
+- 設定の一項目(i2s_cfg_write.type)を微調整する
+- audio elementを初期化(init)する
+というだけです。今回はなぜか初期化の結果の確認はしていませんが、気にする必要はありません。  
 
 　ところで、このaudio elementは、いろんな種類のものがあります。上のi2s_streamというのはその1つで、これはi2sの入出力をする専用のaudio elementです（入力、つまり録音もできるのですが、今回は出力するため、`i2s_cfg_write.type = AUDIO_STREAM_WRITER;`としています）。この他にも、各種オーディオファイルの読み取り機能(mp3_decoder, wav_decoder等)やファイルの読み取り機能(fatfs_stream_reader, http_stream_reader等)のような専用elementがあります。  
 
-　しかし、自分で信号を生成して次のelementに受け渡すような専用elementは残念ながら有りません。そこで、汎用の(基本的な|素っ裸の)audio elementを使って、自分で実装する必要があります。それが48~76行目です。  
+　しかし、自分で信号を生成して次のelementに受け渡すような専用elementは残念ながらありません。そこで、汎用の(基本的な|素っ裸の)audio elementを使って、自分で実装する必要があります。それが48~76行目です。  
 
 ```C
     //---- Create audio-element for generate signal(sine wave) ----
@@ -97,28 +98,57 @@
 
     // --------
 ```
+
 　これも、簡単に言えば、以下の処理をしているだけです。
-- fg_cfgという設定を準備して、
-- audio_element_initでelementを初期化して、
-- 一部の設定を補足している。(audio_element_setinfo)
-　初期化のあとに設定を補足しているのは、恐らくこの順序でなければ設定ができないからで、特に大きな意味は無いので「こういうものか」と読み飛ばしてOKです（実は、i2s_stream_init関数の中身を流用しており、たまたまこの順番だっただけなのです）。  
+- fg_cfgという設定を準備する
+- audio_element_initでelementを初期化する
+- 初期化のあと、一部の設定を補足設定する(audio_element_setinfo)
+　初期化のあとに補足設定をしているのは、恐らくこの順序でなければ設定ができないからで、特に大きな意味はありません（i2s_stream_init関数の中身と同じ順序になっています）。  
 
-　ここで、1つ重要な点があります。それは、`fg_cfg`の要素`open`, `close`, `process`, `destroy`, `read`, `write`の部分です。これらは関数ポインタ型の変数で、それぞれ名前の通りの処理をする関数を指定する変数になっています。write以外はすべて`_geneSig_***`という関数名を代入していますが、これらは135行目以降の関数を指しています。今回は、これらのうち、read(_geneSig_read)という関数で信号を生成します。
-
-
-
-## 信号の生成（callback関数内の処理）
-
+　ここで、1つ重要な点があります。それは、`fg_cfg`の要素`open`, `close`, `process`, `destroy`, `read`, `write`の部分です。これらは関数ポインタ型の変数で、それぞれ名前の通りの処理をする関数を指定する変数になっています。write以外はすべて`_geneSig_***`という関数名を代入していますが、これらは135行目以降の関数を指しています。今回は、これらのうち、read(_geneSig_read)という関数で信号を生成して、process(_geneSig_process)という関数で信号を次のaudio element（つまりi2s stream）へ渡します。信号生成については後述します。  
 
 
 
 ## pipelineの実行
+　次に、78～91行目では、pipelineの準備・動作開始をしています。
+
+```C
+    //Register audio-elements to pipeline
+    audio_pipeline_register(pipeline, generator, "geneSig");
+    audio_pipeline_register(pipeline, i2s_stream_writer, "i2s_write");
+
+    //Link audio-elements (generator-->i2s_stream_writer)
+    audio_pipeline_link(pipeline, (const char *[]) {"geneSig", "i2s_write"}, 2);
+
+    //Set up event listener
+    audio_event_iface_cfg_t evt_cfg = AUDIO_EVENT_IFACE_DEFAULT_CFG();
+    audio_event_iface_handle_t evt = audio_event_iface_init(&evt_cfg);
+    audio_pipeline_set_listener(pipeline, evt);
+
+    //Run pipeline
+    audio_pipeline_run(pipeline);
+```
+
+　これは、つまり以下の処理をしています。
+- pipelineにelementを登録し、
+- audio pipelineの中でelement同士を接続し、
+- event listenerというのを設定して、
+- audio pipelineを起動している。
+　これらは、audio pipelineを使う時の定型文です。最後のaudio_pipeline_run()関数を実行すると、各audio elementが1つのタスクを生成します。ここでいうタスクとは、FreeRTOSのタスクで、つまりxTaskCreatePinnedToCore関数が実行されます。FreeRTOSの説明については割愛しますが、ESP-IDFはFreeRTOSベースで設計されており、マルチタスクやメモリ管理など、一般的なFreeRTOSと同等の機能を有しているようです。とにかく、各audio elementが動作開始(readやwrite等の関数実行)し、element間で信号を受け渡しし始めます。
+
+
 
 ## event処理
+　93~114行目は、無限ループになっています。  
+
+
+
 
 ## 後処理（メモリ解放）
 
 
+## 信号の生成（callback関数内の処理）
+　
 
 # ADFの仕様の説明
 ## audio element
